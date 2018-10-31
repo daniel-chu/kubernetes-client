@@ -24,6 +24,7 @@ import java.io.Reader;
 import java.net.URL;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
@@ -228,39 +229,30 @@ public class PodOperationsImpl extends HasMetadataOperation<Pod, PodList, Doneab
 
     @Override
     public ExecWatch exec(String... command) {
-        StringBuilder sb = new StringBuilder();
-        String[] actualCommands = command.length >= 1 ? command : EMPTY_COMMAND;
-
-        sb.append("exec?command=");
-
-        boolean first = true;
-        for (String cmd : actualCommands) {
-            if (first) {
-                first = false;
-            } else {
-                sb.append("&command=");
-            }
-            sb.append(cmd);
-        }
-
-        if (containerId != null && !containerId.isEmpty()) {
-            sb.append("&container=").append(containerId);
-        }
-        if (withTTY) {
-            sb.append("&tty=true");
-        }
-        if (in != null || inPipe != null) {
-            sb.append("&stdin=true");
-        }
-        if (out != null || outPipe != null) {
-            sb.append("&stdout=true");
-        }
-        if (err != null || errPipe != null) {
-            sb.append("&stderr=true");
-        }
-
         try {
-            URL url = new URL(URLUtils.join(getResourceUrl().toString(), sb.toString()));
+            HttpUrl.Builder urlBuilder = getResourceUrlBuilder().addPathSegment("exec");
+            String[] actualCommands = command.length >= 1 ? command : EMPTY_COMMAND;
+
+            for (String cmd : actualCommands) {
+                urlBuilder.addQueryParameter("command", cmd);
+            }
+
+            if (containerId != null && !containerId.isEmpty()) {
+                urlBuilder.addQueryParameter("container", containerId);
+            }
+            if (withTTY) {
+                urlBuilder.addQueryParameter("tty", "true");
+            }
+            if (in != null || inPipe != null) {
+                urlBuilder.addQueryParameter("stdin", "true");
+            }
+            if (out != null || outPipe != null) {
+                urlBuilder.addQueryParameter("stdout", "true");
+            }
+            if (err != null || errPipe != null) {
+                urlBuilder.addQueryParameter("stderr", "true");
+            }
+            URL url = urlBuilder.build().url();
             Request.Builder r = new Request.Builder().url(url).header("Sec-WebSocket-Protocol", "v4.channel.k8s.io").get();
             OkHttpClient clone = client.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build();
             final ExecWebSocketListener execWebSocketListener = new ExecWebSocketListener(getConfig(), in, out, err, errChannel, inPipe, outPipe, errPipe, errChannelPipe, execListener);
