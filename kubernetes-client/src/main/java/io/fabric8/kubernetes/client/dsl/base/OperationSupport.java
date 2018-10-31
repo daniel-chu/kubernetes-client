@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.fabric8.kubernetes.client.internal.VersionUsageUtils;
 import io.fabric8.kubernetes.client.utils.Serialization;
+import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -155,6 +156,10 @@ public class OperationSupport {
       return getNamespacedUrl();
     }
     return new URL(URLUtils.join(getNamespacedUrl().toString(), name));
+  }
+
+  public HttpUrl.Builder getResourceUrlBuilder() throws MalformedURLException {
+    return HttpUrl.parse(getResourceUrl().toString()).newBuilder();
   }
 
   protected <T> String checkNamespace(T item) {
