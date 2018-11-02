@@ -23,8 +23,8 @@ import io.fabric8.kubernetes.client.dsl.PrettyLoggable;
 import io.fabric8.kubernetes.client.dsl.TailPrettyLoggable;
 import io.fabric8.kubernetes.client.dsl.TimeTailPrettyLoggable;
 import io.fabric8.kubernetes.client.dsl.internal.LogWatchCallback;
-import io.fabric8.kubernetes.client.utils.URLUtils;
 import io.fabric8.openshift.client.dsl.BuildResource;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import io.fabric8.openshift.api.model.Build;
 import io.fabric8.openshift.api.model.BuildList;
@@ -95,32 +95,33 @@ public class BuildOperationsImpl extends OpenShiftOperation<Build, BuildList, Do
     this.limitBytes = limitBytes;
   }
 
-  protected String getLogParameters() {
-    StringBuilder sb = new StringBuilder();
-    sb.append("log?pretty=").append(withPrettyOutput);
+  protected HttpUrl.Builder getWithLogParameters(HttpUrl.Builder urlBuilder) {
+    HttpUrl.Builder copyOfBuilder = urlBuilder.build().newBuilder();
+    copyOfBuilder.addPathSegment("log");
+    copyOfBuilder.addQueryParameter("pretty", Boolean.toString(withPrettyOutput));
     if (version != null && !version.isEmpty()) {
-      sb.append("&version=").append(version);
+      copyOfBuilder.addQueryParameter("version", version);
     }
     if (withTerminatedStatus) {
-      sb.append("&previous=true");
+      copyOfBuilder.addQueryParameter("previous", "true");
     }
     if (sinceSeconds != null) {
-      sb.append("&sinceSeconds=").append(sinceSeconds);
+      copyOfBuilder.addQueryParameter("sinceSeconds", Integer.toString(sinceSeconds));
     } else if (sinceTimestamp != null) {
-      sb.append("&sinceTime=").append(sinceTimestamp);
+      copyOfBuilder.addQueryParameter("sinceTime", sinceTimestamp);
     }
     if (withTailingLines != null) {
-      sb.append("&tailLines=").append(withTailingLines);
+      copyOfBuilder.addQueryParameter("tailLines", Integer.toString(withTailingLines));
     }
     if (limitBytes != null) {
-      sb.append("&limitBytes=").append(limitBytes);
+      copyOfBuilder.addQueryParameter("limitBytes", Integer.toString(limitBytes));
     }
-    return sb.toString();
+    return copyOfBuilder;
   }
 
   protected ResponseBody doGetLog(){
     try {
-      URL url = new URL(URLUtils.join(getResourceUrl().toString(), getLogParameters()));
+      URL url = getWithLogParameters(getResourceUrlBuilder()).build().url();
       Request.Builder requestBuilder = new Request.Builder().get().url(url);
       Request request = requestBuilder.build();
       Response response = client.newCall(request).execute();
@@ -163,7 +164,7 @@ public class BuildOperationsImpl extends OpenShiftOperation<Build, BuildList, Do
   @Override
   public LogWatch watchLog(OutputStream out) {
     try {
-      URL url = new URL(URLUtils.join(getResourceUrl().toString(), getLogParameters() + "&follow=true"));
+      URL url = getWithLogParameters(getResourceUrlBuilder()).addQueryParameter("follow", "true").build().url();
       Request request = new Request.Builder().url(url).get().build();
       final LogWatchCallback callback = new LogWatchCallback(out);
       OkHttpClient clone = client.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build();
