@@ -24,6 +24,7 @@ import java.io.Reader;
 import java.net.URL;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
@@ -55,7 +56,6 @@ import io.fabric8.kubernetes.client.dsl.TtyExecable;
 import io.fabric8.kubernetes.client.dsl.base.HasMetadataOperation;
 import io.fabric8.kubernetes.client.internal.readiness.Readiness;
 import io.fabric8.kubernetes.client.internal.readiness.ReadinessWatcher;
-import io.fabric8.kubernetes.client.utils.URLUtils;
 import okhttp3.*;
 
 public class PodOperationsImpl extends HasMetadataOperation<Pod, PodList, DoneablePod, PodResource<Pod, DoneablePod>> implements PodResource<Pod, DoneablePod> {
@@ -114,32 +114,33 @@ public class PodOperationsImpl extends HasMetadataOperation<Pod, PodList, Doneab
         this.limitBytes =limitBytes;
     }
 
-    protected String getLogParameters() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("log?pretty=").append(withPrettyOutput);
-        if (containerId != null && !containerId.isEmpty()) {
-            sb.append("&container=").append(containerId);
-        }
-        if (withTerminatedStatus) {
-            sb.append("&previous=true");
-        }
-        if (sinceSeconds != null) {
-            sb.append("&sinceSeconds=").append(sinceSeconds);
-        } else if (sinceTimestamp != null) {
-            sb.append("&sinceTime=").append(sinceTimestamp);
-        }
-        if (withTailingLines != null) {
-            sb.append("&tailLines=").append(withTailingLines);
-        }
-        if (limitBytes != null) {
-          sb.append("&limitBytes=").append(limitBytes);
-        }
-        return sb.toString();
+  protected HttpUrl.Builder getWithLogParameters(HttpUrl.Builder urlBuilder) {
+    HttpUrl.Builder copyOfBuilder = urlBuilder.build().newBuilder();
+    copyOfBuilder.addPathSegment("log");
+    copyOfBuilder.addQueryParameter("pretty", Boolean.toString(withPrettyOutput));
+    if (containerId != null && !containerId.isEmpty()) {
+      copyOfBuilder.addQueryParameter("container", containerId);
     }
+    if (withTerminatedStatus) {
+      copyOfBuilder.addQueryParameter("previous", "true");
+    }
+    if (sinceSeconds != null) {
+      copyOfBuilder.addQueryParameter("sinceSeconds", Integer.toString(sinceSeconds));
+    } else if (sinceTimestamp != null) {
+      copyOfBuilder.addQueryParameter("sinceTime", sinceTimestamp);
+    }
+    if (withTailingLines != null) {
+      copyOfBuilder.addQueryParameter("tailLines", Integer.toString(withTailingLines));
+    }
+    if (limitBytes != null) {
+      copyOfBuilder.addQueryParameter("limitBytes", Integer.toString(limitBytes));
+    }
+    return copyOfBuilder;
+  }
 
-    protected ResponseBody doGetLog(){
+    protected ResponseBody doGetLog() {
       try {
-        URL url = new URL(URLUtils.join(getResourceUrl().toString(), getLogParameters()));
+        URL url = getWithLogParameters(getResourceUrlBuilder()).build().url();
         Request.Builder requestBuilder = new Request.Builder().get().url(url);
         Request request = requestBuilder.build();
         Response response = client.newCall(request).execute();
@@ -179,20 +180,20 @@ public class PodOperationsImpl extends HasMetadataOperation<Pod, PodList, Doneab
         return watchLog(null);
     }
 
-    @Override
-    public LogWatch watchLog(OutputStream out) {
-        try {
-            URL url = new URL(URLUtils.join(getResourceUrl().toString(), getLogParameters() + "&follow=true"));
-            Request request = new Request.Builder().url(url).get().build();
-            final LogWatchCallback callback = new LogWatchCallback(out);
-            OkHttpClient clone = client.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build();
-            clone.newCall(request).enqueue(callback);
-            callback.waitUntilReady();
-            return callback;
-        } catch (Throwable t) {
-            throw KubernetesClientException.launderThrowable(forOperationType("watchLog"), t);
-        }
+  @Override
+  public LogWatch watchLog(OutputStream out) {
+    try {
+      URL url = getWithLogParameters(getResourceUrlBuilder()).addQueryParameter("follow", "true").build().url();
+      Request request = new Request.Builder().url(url).get().build();
+      final LogWatchCallback callback = new LogWatchCallback(out);
+      OkHttpClient clone = client.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build();
+      clone.newCall(request).enqueue(callback);
+      callback.waitUntilReady();
+      return callback;
+    } catch (Throwable t) {
+      throw KubernetesClientException.launderThrowable(forOperationType("watchLog"), t);
     }
+  }
 
   @Override
   public PortForward portForward(int port, ReadableByteChannel in, WritableByteChannel out) {
@@ -228,39 +229,30 @@ public class PodOperationsImpl extends HasMetadataOperation<Pod, PodList, Doneab
 
     @Override
     public ExecWatch exec(String... command) {
-        StringBuilder sb = new StringBuilder();
-        String[] actualCommands = command.length >= 1 ? command : EMPTY_COMMAND;
-
-        sb.append("exec?command=");
-
-        boolean first = true;
-        for (String cmd : actualCommands) {
-            if (first) {
-                first = false;
-            } else {
-                sb.append("&command=");
-            }
-            sb.append(cmd);
-        }
-
-        if (containerId != null && !containerId.isEmpty()) {
-            sb.append("&container=").append(containerId);
-        }
-        if (withTTY) {
-            sb.append("&tty=true");
-        }
-        if (in != null || inPipe != null) {
-            sb.append("&stdin=true");
-        }
-        if (out != null || outPipe != null) {
-            sb.append("&stdout=true");
-        }
-        if (err != null || errPipe != null) {
-            sb.append("&stderr=true");
-        }
-
         try {
-            URL url = new URL(URLUtils.join(getResourceUrl().toString(), sb.toString()));
+            HttpUrl.Builder urlBuilder = getResourceUrlBuilder().addPathSegment("exec");
+            String[] actualCommands = command.length >= 1 ? command : EMPTY_COMMAND;
+
+            for (String cmd : actualCommands) {
+                urlBuilder.addQueryParameter("command", cmd);
+            }
+
+            if (containerId != null && !containerId.isEmpty()) {
+                urlBuilder.addQueryParameter("container", containerId);
+            }
+            if (withTTY) {
+                urlBuilder.addQueryParameter("tty", "true");
+            }
+            if (in != null || inPipe != null) {
+                urlBuilder.addQueryParameter("stdin", "true");
+            }
+            if (out != null || outPipe != null) {
+                urlBuilder.addQueryParameter("stdout", "true");
+            }
+            if (err != null || errPipe != null) {
+                urlBuilder.addQueryParameter("stderr", "true");
+            }
+            URL url = urlBuilder.build().url();
             Request.Builder r = new Request.Builder().url(url).header("Sec-WebSocket-Protocol", "v4.channel.k8s.io").get();
             OkHttpClient clone = client.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build();
             final ExecWebSocketListener execWebSocketListener = new ExecWebSocketListener(getConfig(), in, out, err, errChannel, inPipe, outPipe, errPipe, errChannelPipe, execListener);

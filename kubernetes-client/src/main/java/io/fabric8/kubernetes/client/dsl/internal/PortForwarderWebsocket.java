@@ -33,11 +33,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.fabric8.kubernetes.client.LocalPortForward;
 import io.fabric8.kubernetes.client.PortForward;
-import io.fabric8.kubernetes.client.utils.URLUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -152,9 +152,14 @@ public class PortForwarderWebsocket implements PortForwarder {
     final AtomicBoolean alive = new AtomicBoolean(true);
     final String logPrefix = "FWD";
 
+    URL url = HttpUrl.get(resourceBaseUrl).newBuilder()
+      .addPathSegment("portforward")
+      .addQueryParameter("ports", Integer.toString(port))
+      .build()
+      .url();
     Request request = new Request.Builder()
       .get()
-      .url(URLUtils.join(resourceBaseUrl.toString(), "portforward?ports=" + port))
+      .url(url)
       .build();
 
     final WebSocket socket = client.newWebSocket(request, new WebSocketListener() {
